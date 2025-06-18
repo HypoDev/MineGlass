@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubmissions } from '../contexts/SubmissionContext';
-import { Navigate } from 'react-router-dom';
+import { useToast } from '../contexts/ToastContext';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { 
   Users, 
   Package, 
@@ -22,13 +23,80 @@ import {
   Download,
   Server
 } from 'lucide-react';
-import { allMods, servers } from '../data/mockData';
+import { modService } from '../services/modService';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 export default function AdminPage() {
   const { isAdmin } = useAuth();
   const { submissions, approveSubmission, rejectSubmission, getPendingSubmissions } = useSubmissions();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  const [mods, setMods] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, modId: '', modTitle: '' });
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'mods') {
+      loadMods();
+    }
+  }, [activeTab]);
+
+  const loadMods = async () => {
+    try {
+      setLoading(true);
+      const modsData = await modService.getAllMods();
+      setMods(modsData);
+    } catch (error) {
+      console.error('Error loading mods:', error);
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load mods'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMod = async () => {
+    try {
+      setDeleting(true);
+      await modService.deleteMod(deleteModal.modId);
+      
+      showToast({
+        type: 'success',
+        title: 'Success',
+        message: `${deleteModal.modTitle} has been deleted`
+      });
+      
+      setDeleteModal({ isOpen: false, modId: '', modTitle: '' });
+      loadMods(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting mod:', error);
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to delete mod'
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openDeleteModal = (modId: string, modTitle: string) => {
+    setDeleteModal({ isOpen: true, modId, modTitle });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ isOpen: false, modId: '', modTitle: '' });
+  };
+
+  const handleEditMod = (modId: string) => {
+    navigate(`/admin/edit-mod/${modId}`);
+  };
 
   if (!isAdmin) {
     return <Navigate to="/login" replace />;
@@ -57,9 +125,8 @@ export default function AdminPage() {
     return downloads.toString();
   };
 
-  const totalDownloads = allMods.reduce((sum, mod) => sum + mod.downloads, 0);
   const totalUsers = 15420;
-  const totalServers = servers.length;
+  const totalServers = 2;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -82,6 +149,11 @@ export default function AdminPage() {
         return 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-400';
     }
   };
+
+  const filteredMods = mods.filter(mod => 
+    mod.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    mod.author?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-900 transition-colors duration-300">
@@ -106,7 +178,7 @@ export default function AdminPage() {
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600 dark:text-dark-300">Total Mods</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{allMods.length}</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{mods.length}</p>
                 </div>
               </div>
             </div>
@@ -185,7 +257,10 @@ export default function AdminPage() {
                 <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-lg border border-gray-200 dark:border-dark-600 p-8">
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Quick Actions</h3>
                   <div className="space-y-4">
-                    <button className="w-full flex items-center space-x-4 p-4 bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20 rounded-2xl hover:from-primary-100 hover:to-primary-200 dark:hover:from-primary-800/30 dark:hover:to-primary-700/30 transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                    <button 
+                      onClick={() => navigate('/admin/edit-mod/new')}
+                      className="w-full flex items-center space-x-4 p-4 bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20 rounded-2xl hover:from-primary-100 hover:to-primary-200 dark:hover:from-primary-800/30 dark:hover:to-primary-700/30 transition-all duration-300 hover:scale-105 hover:shadow-lg"
+                    >
                       <div className="w-12 h-12 bg-gradient-to-r from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center">
                         <Plus className="w-6 h-6 text-white" />
                       </div>
@@ -194,7 +269,10 @@ export default function AdminPage() {
                         <span className="text-sm text-primary-600 dark:text-primary-400">Add a new mod to the platform</span>
                       </div>
                     </button>
-                    <button className="w-full flex items-center space-x-4 p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-2xl hover:from-green-100 hover:to-green-200 dark:hover:from-green-800/30 dark:hover:to-green-700/30 transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                    <button 
+                      onClick={() => setActiveTab('submissions')}
+                      className="w-full flex items-center space-x-4 p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-2xl hover:from-green-100 hover:to-green-200 dark:hover:from-green-800/30 dark:hover:to-green-700/30 transition-all duration-300 hover:scale-105 hover:shadow-lg"
+                    >
                       <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-green-600 rounded-2xl flex items-center justify-center">
                         <Upload className="w-6 h-6 text-white" />
                       </div>
@@ -203,13 +281,16 @@ export default function AdminPage() {
                         <span className="text-sm text-green-600 dark:text-green-400">{pendingSubmissions.length} pending reviews</span>
                       </div>
                     </button>
-                    <button className="w-full flex items-center space-x-4 p-4 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-2xl hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/30 dark:hover:to-purple-700/30 transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                    <button 
+                      onClick={() => setActiveTab('mods')}
+                      className="w-full flex items-center space-x-4 p-4 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-2xl hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/30 dark:hover:to-purple-700/30 transition-all duration-300 hover:scale-105 hover:shadow-lg"
+                    >
                       <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center">
                         <BarChart3 className="w-6 h-6 text-white" />
                       </div>
                       <div className="text-left">
-                        <span className="font-bold text-purple-700 dark:text-purple-300 block">View Analytics</span>
-                        <span className="text-sm text-purple-600 dark:text-purple-400">Platform performance metrics</span>
+                        <span className="font-bold text-purple-700 dark:text-purple-300 block">Manage Mods</span>
+                        <span className="text-sm text-purple-600 dark:text-purple-400">Edit and manage existing mods</span>
                       </div>
                     </button>
                   </div>
@@ -328,65 +409,91 @@ export default function AdminPage() {
                       className="pl-10 pr-4 py-3 border border-gray-300 dark:border-dark-600 rounded-xl bg-white dark:bg-dark-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
                     />
                   </div>
-                  <button className="bg-gradient-to-r from-primary-500 to-primary-600 text-white px-6 py-3 rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all duration-200 transform hover:scale-105 hover:shadow-lg flex items-center space-x-2 font-medium">
+                  <button 
+                    onClick={() => navigate('/admin/edit-mod/new')}
+                    className="bg-gradient-to-r from-primary-500 to-primary-600 text-white px-6 py-3 rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all duration-200 transform hover:scale-105 hover:shadow-lg flex items-center space-x-2 font-medium"
+                  >
                     <Plus className="w-5 h-5" />
                     <span>Add Mod</span>
                   </button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-dark-600">
-                      <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Mod</th>
-                      <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Author</th>
-                      <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Downloads</th>
-                      <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Rating</th>
-                      <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allMods.filter(mod => 
-                      mod.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      mod.author.toLowerCase().includes(searchQuery.toLowerCase())
-                    ).map((mod) => (
-                      <tr key={mod.id} className="border-b border-gray-100 dark:border-dark-700 hover:bg-gray-50 dark:hover:bg-dark-700 transition-all duration-200">
-                        <td className="py-4 px-6">
-                          <div className="flex items-center space-x-4">
-                            <img src={mod.imageUrl} alt={mod.title} className="w-12 h-12 rounded-xl object-cover shadow-lg" />
-                            <div>
-                              <p className="font-bold text-gray-900 dark:text-white">{mod.title}</p>
-                              <p className="text-sm text-gray-500 dark:text-dark-400">{mod.category}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-6 text-gray-700 dark:text-dark-200 font-medium">{mod.author}</td>
-                        <td className="py-4 px-6 text-gray-700 dark:text-dark-200 font-medium">{formatDownloads(mod.downloads)}</td>
-                        <td className="py-4 px-6">
-                          <div className="flex items-center space-x-1">
-                            <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                            <span className="text-gray-700 dark:text-dark-200 font-medium">{mod.rating}</span>
-                          </div>
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="flex items-center space-x-2">
-                            <button className="p-2 text-gray-500 dark:text-dark-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-xl transition-all duration-200 hover:scale-110">
-                              <Eye className="w-5 h-5" />
-                            </button>
-                            <button className="p-2 text-gray-500 dark:text-dark-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all duration-200 hover:scale-110">
-                              <Edit className="w-5 h-5" />
-                            </button>
-                            <button className="p-2 text-gray-500 dark:text-dark-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200 hover:scale-110">
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
+              {loading ? (
+                <div className="text-center py-16">
+                  <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-gray-600 dark:text-dark-300">Loading mods...</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-dark-600">
+                        <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Mod</th>
+                        <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Author</th>
+                        <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Downloads</th>
+                        <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Rating</th>
+                        <th className="text-left py-4 px-6 font-bold text-gray-700 dark:text-dark-200">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredMods.map((mod) => (
+                        <tr key={mod.id} className="border-b border-gray-100 dark:border-dark-700 hover:bg-gray-50 dark:hover:bg-dark-700 transition-all duration-200">
+                          <td className="py-4 px-6">
+                            <div className="flex items-center space-x-4">
+                              <img src={mod.imageUrl || 'https://images.pexels.com/photos/163064/play-stone-network-networked-interactive-163064.jpeg?auto=compress&cs=tinysrgb&w=800'} alt={mod.title} className="w-12 h-12 rounded-xl object-cover shadow-lg" />
+                              <div>
+                                <p className="font-bold text-gray-900 dark:text-white">{mod.title}</p>
+                                <p className="text-sm text-gray-500 dark:text-dark-400">{mod.category}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-gray-700 dark:text-dark-200 font-medium">{mod.author}</td>
+                          <td className="py-4 px-6 text-gray-700 dark:text-dark-200 font-medium">{formatDownloads(mod.downloads)}</td>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center space-x-1">
+                              <Star className="w-4 h-4 text-yellow-500 fill-current" />
+                              <span className="text-gray-700 dark:text-dark-200 font-medium">{mod.rating}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center space-x-2">
+                              <button 
+                                onClick={() => navigate(`/mod/${mod.id}`)}
+                                className="p-2 text-gray-500 dark:text-dark-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-xl transition-all duration-200 hover:scale-110"
+                              >
+                                <Eye className="w-5 h-5" />
+                              </button>
+                              <button 
+                                onClick={() => handleEditMod(mod.id)}
+                                className="p-2 text-gray-500 dark:text-dark-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all duration-200 hover:scale-110"
+                              >
+                                <Edit className="w-5 h-5" />
+                              </button>
+                              <button 
+                                onClick={() => openDeleteModal(mod.id, mod.title)}
+                                className="p-2 text-gray-500 dark:text-dark-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200 hover:scale-110"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {filteredMods.length === 0 && (
+                    <div className="text-center py-16">
+                      <Package className="w-20 h-20 mx-auto text-gray-400 dark:text-dark-500 mb-6" />
+                      <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">No mods found</h4>
+                      <p className="text-gray-500 dark:text-dark-400 text-lg">
+                        {searchQuery ? 'Try adjusting your search query' : 'Start by adding your first mod'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -400,32 +507,10 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {servers.map((server) => (
-                  <div key={server.id} className="border border-gray-200 dark:border-dark-600 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:scale-105">
-                    <img src={server.imageUrl} alt={server.name} className="w-full h-40 object-cover rounded-xl mb-4" />
-                    <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{server.name}</h4>
-                    <p className="text-gray-600 dark:text-dark-300 mb-4">{server.description}</p>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-2">
-                        <Users className="w-4 h-4 text-gray-500 dark:text-dark-400" />
-                        <span className="text-gray-600 dark:text-dark-300">{server.players.online}/{server.players.max}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className={`w-2 h-2 rounded-full ${server.uptime >= 90 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-                        <span className="text-gray-600 dark:text-dark-300">{server.uptime}% uptime</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button className="flex-1 bg-gradient-to-r from-primary-500 to-primary-600 text-white px-4 py-2 rounded-lg hover:from-primary-600 hover:to-primary-700 transition-all duration-200 font-medium">
-                        Edit Server
-                      </button>
-                      <button className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200">
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="text-center py-16">
+                <Server className="w-24 h-24 mx-auto text-gray-400 dark:text-dark-500 mb-6" />
+                <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Server management coming soon</h4>
+                <p className="text-gray-500 dark:text-dark-400 text-lg">Advanced server management features will be available in the next update.</p>
               </div>
             </div>
           )}
@@ -479,6 +564,19 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteMod}
+        title="Delete Mod"
+        message={`Are you sure you want to delete "${deleteModal.modTitle}"? This action cannot be undone and will also delete the associated image from storage.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
